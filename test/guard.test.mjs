@@ -1,5 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { mkdtempSync, writeFileSync, mkdirSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -71,5 +72,63 @@ test('scan walks a tree, honours allow rules, and skips binaries', () => {
   const result = scan([root], policy, { walk: true });
   assert.equal(result.matches.length, 1);
   assert.equal(result.matches[0].file, 'leaky.md');
-  assert.equal(result.skipped, 2); // the allow-listed file and the binary
+  assert.equal(result.skippedBinary, 1);
+  assert.ok(!result.clean);
+});
+
+test('two secrets on one line are two findings, not one', () => {
+  const matches = scanText('x.md', 'projectnova met hq-internal.example today', policy);
+  assert.equal(matches.length, 2);
+});
+
+test('an oversized file is named and dirties the result unless skips are allowed', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'crg-big-'));
+  writeFileSync(path.join(root, 'big.txt'), 'projectnova '.repeat(10));
+  writeFileSync(path.join(root, 'ok.txt'), 'public');
+  const closed = scan([root], policy, { walk: true, maxBytes: 20 });
+  assert.deepEqual(closed.skippedSize, ['big.txt']);
+  assert.ok(!closed.clean, 'a file the scan could not examine is not clean');
+  const allowed = scan([root], policy, { walk: true, maxBytes: 20, allowSkips: true });
+  assert.ok(allowed.clean, 'the explicit override accepts the skip');
+  assert.deepEqual(allowed.skippedSize, ['big.txt'], 'and the skip is still named');
+});
+
+test('the guards live in scan(): a library caller cannot bypass them', () => {
+  const root = mkdtempSync(path.join(tmpdir(), 'crg-lib-'));
+  writeFileSync(path.join(root, 'p.txt'), 'projectnova');
+  const inside = parsePolicy('projectnova\n', path.join(root, 'policy.txt'));
+  assert.throws(() => scan([root], inside, { walk: true }), UsageError);
+  const empty = parsePolicy('# nothing\n', '/elsewhere/.policy');
+  assert.throws(() => scan([root], empty, { walk: true }), /empty policy proves nothing/);
+});
+
+const gitIn = (repo) => (args) => execFileSync('git', ['-C', repo, ...args], { encoding: 'utf8' });
+
+test('--staged reads the index, not the working tree', () => {
+  const repo = mkdtempSync(path.join(tmpdir(), 'crg-staged-'));
+  const git = gitIn(repo);
+  git(['init', '-q']);
+  git(['config', 'user.email', 'test@example.invalid']);
+  git(['config', 'user.name', 'Test']);
+  writeFileSync(path.join(repo, 'config.txt'), 'token=projectnova');
+  git(['add', 'config.txt']);
+  // the secret is staged; the working tree is then cleaned - the classic
+  // way a pre-commit scan gets fooled
+  writeFileSync(path.join(repo, 'config.txt'), 'token=redacted');
+  const result = scan([repo], policy, { staged: true });
+  assert.equal(result.matches.length, 1, 'the staged blob still carries the secret');
+  assert.equal(result.matches[0].file, 'config.txt');
+});
+
+test('--staged from a subdirectory still scans the staged set', () => {
+  const repo = mkdtempSync(path.join(tmpdir(), 'crg-subdir-'));
+  const git = gitIn(repo);
+  git(['init', '-q']);
+  git(['config', 'user.email', 'test@example.invalid']);
+  git(['config', 'user.name', 'Test']);
+  mkdirSync(path.join(repo, 'sub'));
+  writeFileSync(path.join(repo, 'sub', 'notes.txt'), 'projectnova inside');
+  git(['add', '.']);
+  const result = scan([path.join(repo, 'sub')], policy, { staged: true });
+  assert.equal(result.matches.length, 1, 'no silent zero-file pass from a subdirectory');
 });

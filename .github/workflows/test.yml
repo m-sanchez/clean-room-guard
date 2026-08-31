@@ -1,0 +1,30 @@
+name: test
+on:
+  push:
+    branches: [main]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node: [18, 22, 24]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: ${{ matrix.node }}
+      - run: npm ci
+      - run: npm test
+      - run: npm pack
+      - name: install proof
+        run: |
+          mkdir -p "$RUNNER_TEMP/scratch" && cd "$RUNNER_TEMP/scratch"
+          npm init -y > /dev/null
+          npm install "$GITHUB_WORKSPACE"/clean-room-guard-*.tgz
+          node -e "import('clean-room-guard').then(m => { if (!m.scan) throw new Error('scan missing'); console.log('import ok'); })"
+          printf 'plutoniumfox\n' > policy.txt
+          printf 'nothing here\n' > readme.txt
+          npx clean-room-guard . --walk --policy "$RUNNER_TEMP/pol.txt" || true
+          cp policy.txt "$RUNNER_TEMP/pol.txt" && rm policy.txt
+          npx clean-room-guard . --walk --policy "$RUNNER_TEMP/pol.txt"

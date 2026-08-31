@@ -1,6 +1,6 @@
 {
   "name": "clean-room-guard",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Pre-publication scanning with a private local denylist that never enters the repository.",
   "type": "module",
   "bin": {
