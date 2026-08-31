@@ -10,14 +10,14 @@ it: organisation names, internal hostnames, ticket prefixes, machine paths.
 The twist most scanners miss: **the list of forbidden tokens is itself the
 most sensitive file involved**. clean-room-guard is built around that fact.
 
-- The policy file is required and lives outside the scanned tree — the tool
+- The policy file is required and lives outside the scanned tree: the tool
   **refuses to run** if the policy sits inside any scanned root. The list
   cannot ship with the tree it guards, by construction.
 - Reports are **redacted by default**: `match src/config.ts:14:8 rule#3`.
   A leak report you can paste into an issue without republishing the leak.
   `--show` reveals tokens when you are somewhere safe.
-- Inside a git work tree it scans **what git tracks** — the set that would
-  actually publish — not whatever happens to be on disk. `--staged` scans
+- Inside a git work tree it scans **what git tracks**, the set that would
+  actually publish, not whatever happens to be on disk. `--staged` scans
   the index instead, for pre-commit use.
 
 ## Run
@@ -70,7 +70,7 @@ CI, with the policy delivered from a secret store rather than the repo:
 
 First-public-push checklist: run with `--walk` once (catches untracked files
 you are about to `git add`), then the default tracked-files scan, then read
-`git log --format='%an %ae'` — history is part of the publication too.
+`git log --format='%an %ae'`; history is part of the publication too.
 
 ## The tests are the point
 
