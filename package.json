@@ -1,0 +1,36 @@
+{
+  "name": "clean-room-guard",
+  "version": "1.0.0",
+  "description": "Pre-publication scanning with a private local denylist that never enters the repository.",
+  "type": "module",
+  "bin": {
+    "clean-room-guard": "./bin/clean-room-guard.mjs"
+  },
+  "exports": {
+    ".": "./src/guard.mjs"
+  },
+  "files": [
+    "src",
+    "bin"
+  ],
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\""
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/m-sanchez/clean-room-guard.git"
+  },
+  "author": "Miguel Sanchez <contact@miguelsanchez.co.uk>",
+  "license": "MIT",
+  "keywords": [
+    "security",
+    "secrets",
+    "pre-commit",
+    "publishing",
+    "open-source",
+    "scanner"
+  ],
+  "engines": {
+    "node": ">=18"
+  }
+}
