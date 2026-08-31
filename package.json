@@ -14,7 +14,7 @@
     "bin"
   ],
   "scripts": {
-    "test": "node --test \"test/*.test.mjs\""
+    "test": "node --test test/guard.test.mjs test/cli.test.mjs"
   },
   "repository": {
     "type": "git",
