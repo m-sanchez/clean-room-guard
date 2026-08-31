@@ -1,5 +1,11 @@
 # clean-room-guard
 
+![Node](https://img.shields.io/badge/node-%3E%3D18-5FA04E?logo=nodedotjs&logoColor=white)
+![Dependencies](https://img.shields.io/badge/dependencies-0-B45309)
+![Tests](https://img.shields.io/badge/tests-12_passing-2F6F44)
+![Exit codes](https://img.shields.io/badge/exit_codes-0%2F1%2F2-6E6E6E)
+![License](https://img.shields.io/badge/license-MIT-6E6E6E)
+
 Pre-publication scanning with a private local denylist that never enters the
 repository.
 
