@@ -6,6 +6,8 @@
 ![Exit codes](https://img.shields.io/badge/exit_codes-0%2F1%2F2-6E6E6E)
 ![License](https://img.shields.io/badge/license-MIT-6E6E6E)
 
+> **In plain English:** this scans code extracted from private work to make sure none of the original's fingerprints leaked in before you publish it.
+
 Pre-publication scanning with a private local denylist that never enters the
 repository.
 
