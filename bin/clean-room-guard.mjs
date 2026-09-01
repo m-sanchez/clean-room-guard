@@ -3,11 +3,12 @@
  * clean-room-guard CLI.
  *
  *   clean-room-guard [roots...] [--policy <file>] [--staged] [--walk]
- *                    [--show] [--max-bytes <n>] [--allow-skip] [--version]
+ *                    [--show] [--max-bytes <n>] [--allow-skip]
+ *                    [--allow-empty] [--version]
  *
- * Exit codes: 0 clean - 1 matches found or unscanned files present - 2
- * usage or policy error. A flag with a missing value is a usage error,
- * never a silent fallback.
+ * Exit codes: 0 clean - 1 matches found, unscanned files present, or
+ * nothing examined at all - 2 usage or policy error. A flag with a missing
+ * value is a usage error, never a silent fallback.
  */
 
 import { readFileSync } from 'node:fs';
@@ -28,7 +29,7 @@ function requireValue(argv, i, flag) {
 }
 
 function parseArgs(argv) {
-  const opts = { roots: [], policy: undefined, staged: false, walk: false, show: false, maxBytes: undefined, allowSkips: false };
+  const opts = { roots: [], policy: undefined, staged: false, walk: false, show: false, maxBytes: undefined, allowSkips: false, allowEmpty: false };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === '--policy') opts.policy = requireValue(argv, i++, '--policy');
@@ -36,6 +37,7 @@ function parseArgs(argv) {
     else if (a === '--walk') opts.walk = true;
     else if (a === '--show') opts.show = true;
     else if (a === '--allow-skip') opts.allowSkips = true;
+    else if (a === '--allow-empty') opts.allowEmpty = true;
     else if (a === '--max-bytes') {
       const raw = requireValue(argv, i++, '--max-bytes');
       opts.maxBytes = Number(raw);
@@ -55,7 +57,7 @@ try {
   const opts = parseArgs(process.argv.slice(2));
   if (opts.help) {
     console.log(
-      'usage: clean-room-guard [roots...] [--policy <file>] [--staged] [--walk] [--show] [--max-bytes <n>] [--allow-skip]'
+      'usage: clean-room-guard [roots...] [--policy <file>] [--staged] [--walk] [--show] [--max-bytes <n>] [--allow-skip] [--allow-empty]'
     );
     process.exit(0);
   }
@@ -73,16 +75,32 @@ try {
   for (const skipped of result.skippedSize) {
     console.error(`unscanned (over size cap): ${skipped}`);
   }
+  for (const skipped of result.skippedBinary) {
+    console.error(`unscanned (binary): ${skipped}`);
+  }
+  const unscanned = result.skippedSize.length + result.skippedBinary.length;
   if (!result.clean) {
-    const why =
-      result.matches.length > 0
-        ? `${result.matches.length} match(es)`
-        : `${result.skippedSize.length} file(s) unscanned (pass --allow-skip to accept)`;
-    console.error(`clean-room-guard: ${why} across ${result.filesScanned} file(s) scanned - do not publish`);
+    if (result.matches.length === 0 && unscanned === 0) {
+      // the worst failure this tool has: a reassuring exit 0 over nothing
+      console.error(
+        `clean-room-guard: scanned 0 files under ${result.roots.join(', ')} - nothing was ` +
+          'examined, so nothing is proven (pass --allow-empty if the root is legitimately empty)'
+      );
+    } else {
+      const why =
+        result.matches.length > 0
+          ? `${result.matches.length} match(es)`
+          : `${unscanned} file(s) unscanned (pass --allow-skip to accept)`;
+      console.error(`clean-room-guard: ${why} across ${result.filesScanned} file(s) scanned - do not publish`);
+    }
     process.exit(1);
   }
+  const accepted = [
+    result.skippedBinary.length ? `${result.skippedBinary.length} binary` : null,
+    result.skippedSize.length ? `${result.skippedSize.length} over the size cap` : null
+  ].filter(Boolean);
   console.log(
-    `clean-room-guard: clean (${result.filesScanned} files scanned, ${result.skippedBinary} binary skipped${result.skippedSize.length ? `, ${result.skippedSize.length} size-skipped by --allow-skip` : ''})`
+    `clean-room-guard: clean (${result.filesScanned} files scanned${accepted.length ? `, ${accepted.join(' and ')} skipped by --allow-skip` : ''})`
   );
 } catch (err) {
   if (err instanceof UsageError) {
