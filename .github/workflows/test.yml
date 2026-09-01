@@ -21,8 +21,8 @@ jobs:
         run: |
           mkdir -p "$RUNNER_TEMP/scratch" && cd "$RUNNER_TEMP/scratch"
           npm init -y > /dev/null
-          npm install "$GITHUB_WORKSPACE"/clean-room-guard-*.tgz
-          node -e "import('clean-room-guard').then(m => { if (!m.scan) throw new Error('scan missing'); console.log('import ok'); })"
+          npm install "$GITHUB_WORKSPACE"/m-sanchez-clean-room-guard-*.tgz
+          node -e "import('@m-sanchez/clean-room-guard').then(m => { if (!m.scan) throw new Error('scan missing'); console.log('import ok'); })"
           printf 'plutoniumfox\n' > policy.txt
           printf 'nothing here\n' > readme.txt
           npx clean-room-guard . --walk --policy "$RUNNER_TEMP/pol.txt" || true

@@ -5,6 +5,7 @@
 [![CI](https://github.com/m-sanchez/clean-room-guard/actions/workflows/test.yml/badge.svg)](https://github.com/m-sanchez/clean-room-guard/actions/workflows/test.yml)
 ![Exit codes](https://img.shields.io/badge/exit_codes-0%2F1%2F2-6E6E6E)
 ![License](https://img.shields.io/badge/license-MIT-6E6E6E)
+[![npm](https://img.shields.io/npm/v/@m-sanchez/clean-room-guard?color=CB3837&logo=npm&logoColor=white)](https://www.npmjs.com/package/@m-sanchez/clean-room-guard)
 
 > **In plain English:** this scans code extracted from private work to make sure none of the original's fingerprints leaked in before you publish it.
 
@@ -12,6 +13,9 @@ Pre-publication scanning with a private local denylist that never enters the
 repository.
 
 [More tools](https://github.com/m-sanchez) · [Working rules](https://miguelsanchez.co.uk/ethics)
+
+*Provenance: this came out of one body of production LLM work, extracted and
+generalised into a standalone package. First published 2026-08-31.*
 
 Before a tree goes public, scan it for the tokens that must not travel with
 it: organisation names, internal hostnames, ticket prefixes, machine paths.
@@ -41,12 +45,12 @@ most sensitive file involved**. clean-room-guard is built around that fact.
 ## Install
 
 ```bash
-npm install -D github:m-sanchez/clean-room-guard#v2.0.0
+npm install -D @m-sanchez/clean-room-guard
 ```
 
-Not yet on npm; the pinned git tag is the supported install (plain
-JavaScript, runs anywhere node 18+ does) and CI proves the packed tarball
-installs, imports, and catches a planted token. After install the
+Also installable from a pinned git tag (plain JavaScript, runs anywhere node
+18+ does): `github:m-sanchez/clean-room-guard#v2.0.1`. CI proves the packed
+tarball installs, imports, and catches a planted token. After install the
 `clean-room-guard` command is on your path via `npx`.
 
 ```bash
