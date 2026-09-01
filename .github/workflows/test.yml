@@ -17,14 +17,67 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm pack
+      # The point of this step is that the PACKED TARBALL catches a real
+      # planted token and honours the documented 0/1/2 contract. Every run
+      # captures the exit code and asserts it; nothing here is allowed to
+      # fail into `|| true`, because a scanner hard-coded to return clean
+      # would pass a proof that only ever scans a clean tree.
       - name: install proof
+        env:
+          TOKEN: plutoniumfox
         run: |
-          mkdir -p "$RUNNER_TEMP/scratch" && cd "$RUNNER_TEMP/scratch"
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/scratch"
+          cd "$RUNNER_TEMP/scratch"
           npm init -y > /dev/null
           npm install "$GITHUB_WORKSPACE"/m-sanchez-clean-room-guard-*.tgz
           node -e "import('@m-sanchez/clean-room-guard').then(m => { if (!m.scan) throw new Error('scan missing'); console.log('import ok'); })"
-          printf 'plutoniumfox\n' > policy.txt
-          printf 'nothing here\n' > readme.txt
-          npx clean-room-guard . --walk --policy "$RUNNER_TEMP/pol.txt" || true
-          cp policy.txt "$RUNNER_TEMP/pol.txt" && rm policy.txt
+
+          # the policy lives outside the scanned root, as the tool insists
+          printf '%s\n' "$TOKEN" > "$RUNNER_TEMP/pol.txt"
+          printf 'const host = "%s";\n' "$TOKEN" > planted.js
+
+          # 1. a planted token: exit 1, the finding named, and the token
+          #    itself absent from a log anyone can read
+          set +e
+          out=$(npx clean-room-guard . --walk --policy "$RUNNER_TEMP/pol.txt" 2>&1)
+          code=$?
+          set -e
+          if printf '%s' "$out" | grep -qF "$TOKEN"; then
+            echo "FAIL: the report republished the planted token (output withheld)"
+            exit 1
+          fi
+          printf '%s\n' "$out"
+          test "$code" = "1" || { echo "FAIL: expected exit 1 for a planted token, got $code"; exit 1; }
+          printf '%s' "$out" | grep -q 'match planted.js:1:' \
+            || { echo "FAIL: the planted token was not reported"; exit 1; }
+
+          # 2. the same tree without the planted file is clean
+          rm planted.js
           npx clean-room-guard . --walk --policy "$RUNNER_TEMP/pol.txt"
+
+          # 3. a missing policy is a policy error, never a clean pass
+          set +e
+          npx clean-room-guard . --walk --policy "$RUNNER_TEMP/absent.txt" > /dev/null 2>&1
+          code=$?
+          set -e
+          test "$code" = "2" || { echo "FAIL: expected exit 2 for a missing policy, got $code"; exit 1; }
+
+          # 4. a malformed regex rule is a policy error too, not the code
+          #    reserved for "your tree leaks"
+          printf '/TICKET-[0-9/\n' > "$RUNNER_TEMP/bad.txt"
+          set +e
+          npx clean-room-guard . --walk --policy "$RUNNER_TEMP/bad.txt" > /dev/null 2>&1
+          code=$?
+          set -e
+          test "$code" = "2" || { echo "FAIL: expected exit 2 for a malformed regex, got $code"; exit 1; }
+
+          # 5. a root where nothing was examined proves nothing: exit 1
+          mkdir -p "$RUNNER_TEMP/nothing"
+          set +e
+          npx clean-room-guard "$RUNNER_TEMP/nothing" --walk --policy "$RUNNER_TEMP/pol.txt" > /dev/null 2>&1
+          code=$?
+          set -e
+          test "$code" = "1" || { echo "FAIL: expected exit 1 for a zero-file scan, got $code"; exit 1; }
+
+          echo "install proof: planted token caught and redacted, 0/1/2 contract holds"
