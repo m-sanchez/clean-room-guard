@@ -26,21 +26,33 @@ most sensitive file involved**. clean-room-guard is built around that fact.
   **refuses to run** if the policy sits inside any scanned root. The list
   cannot ship with the tree it guards, by construction.
 - Reports are **redacted by default**: `match src/config.ts:14:8 rule#3`.
-  A leak report you can paste into an issue without republishing the leak.
-  `--show` reveals tokens when you are somewhere safe.
+  A leak report you can paste into an issue without republishing the leak -
+  including when the token is in the *path*, which is masked to a same-width
+  run of `*`. `--show` reveals tokens when you are somewhere safe.
+- **Paths are scanned as content.** `src/projectnova/config.ts` is a leak
+  even when every file body is clean: a directory named after the original
+  survives any amount of rewriting the code. Path findings are reported as
+  `path-match src/***********/config.ts:5 rule#1`, visibly distinct from a
+  content hit and carrying nothing you cannot paste in public.
 - Inside a git work tree it scans **what git tracks**, the set that would
   actually publish, not whatever happens to be on disk. `--staged` scans
-  **the index blobs themselves** (`git show :<path>`), so staging a secret
-  and then cleaning the working copy cannot fool a pre-commit hook, and
-  running from a subdirectory cannot silently scan zero files.
-- **A file the scan could not examine is not clean.** Files over the size
-  cap (5 MB default, `--max-bytes` to change) are named in the output and
-  fail the scan unless you pass `--allow-skip` explicitly. Binary files
-  are skipped by a NUL-sniff of the first 8 KB - a heuristic, documented
-  as one: UTF-16 and NUL-free binaries are scanned as text.
+  **the index blobs themselves**, so staging a secret and then cleaning the
+  working copy cannot fool a pre-commit hook - and it scans the whole
+  index, so a hook fired from a subdirectory of a monorepo cannot silently
+  miss the sibling package the commit also carries.
+- **Nothing the scan did not examine counts as clean.** Files over the size
+  cap (5 MB default, `--max-bytes` to change) *and* files that sniff as
+  binary are both **named** in the output and fail the scan unless you pass
+  `--allow-skip` explicitly. A UTF-16 BOM is decoded and scanned as text:
+  UTF-16-encoded ASCII is NUL-dense, so a NUL sniff on its own drops every
+  UTF-16 file, which on a Windows-origin codebase is exactly where the
+  internal hostnames live. And a run that examined **no files at all** - an
+  untracked root, a policy typo that excluded the tree - fails too, rather
+  than printing a reassuring `clean`.
 - **The guards live in the library.** `scan()` itself refuses a policy
-  inside a scanned root and an empty policy; the CLI is a thin wrapper,
-  not the enforcement point.
+  inside a scanned root and an empty policy, and `parsePolicy()` refuses
+  the typos that would quietly turn the scanner into a no-op; the CLI is a
+  thin wrapper, not the enforcement point.
 
 ## Install
 
@@ -49,28 +61,33 @@ npm install -D @m-sanchez/clean-room-guard
 ```
 
 Also installable from a pinned git tag (plain JavaScript, runs anywhere node
-18+ does): `github:m-sanchez/clean-room-guard#v2.0.1`. CI proves the packed
-tarball installs, imports, and catches a planted token. After install the
+18+ does): `github:m-sanchez/clean-room-guard#v3.0.0`. CI proves the packed
+tarball installs, imports, catches a planted token without echoing it into
+the log, and honours the whole exit-code contract below. After install the
 `clean-room-guard` command is on your path via `npx`.
 
 ```bash
 # scan the current repo against ~/.clean-room-policy
 npx clean-room-guard
 
-# explicit policy and roots; reveal matched tokens
-npx clean-room-guard ./dist --policy ~/policies/acme.txt --show
+# a build output directory is usually untracked, so walk it rather than
+# asking git what it tracks there; reveal matched tokens
+npx clean-room-guard ./dist --walk --policy ~/policies/acme.txt --show
 ```
 
-Exit codes: `0` clean · `1` matches found or unscanned files present ·
-`2` usage or policy error. A missing or empty policy is an error, never a
-clean pass, and a flag with a missing value is a usage error, never a
-silent fallback.
+Exit codes: `0` clean · `1` matches found, unscanned files present, or
+nothing examined at all · `2` usage or policy error. A missing policy, an
+empty policy, an `allow:` line with no value and a malformed regex rule are
+all errors, never a clean pass; a flag with a missing value is a usage
+error, never a silent fallback. Scanning zero files is a failure - pass
+`--allow-empty` if a root really is expected to be empty.
 
 ## Policy format
 
 One rule per line. `#` comments. `/slashes/i` for a regex; anything else is
 a case-insensitive literal. `allow:<substring>` excludes paths containing
-the substring (lockfiles full of random base64, vendored noise).
+the substring (lockfiles full of random base64, vendored noise), and takes
+precedence over path matching.
 
 ```text
 # ~/.clean-room-policy - never committed anywhere
@@ -80,6 +97,10 @@ hq-internal.example
 allow:package-lock.json
 ```
 
+`allow:` with nothing after it is rejected: every path contains the empty
+string, so that one-character typo would exclude the whole tree and the
+scan would pass having read nothing.
+
 ## Recipes
 
 Pre-commit hook (`.git/hooks/pre-commit`):
@@ -88,6 +109,24 @@ Pre-commit hook (`.git/hooks/pre-commit`):
 #!/bin/sh
 exec clean-room-guard --staged
 ```
+
+What that hook costs, measured by `npm run bench`
+([bench/staged-latency.mjs](bench/staged-latency.mjs)) on Windows 11, node
+v24.9.0, git 2.45.1 - one staged scan of ~2 KB source files:
+
+| staged files | 2.0.1 | 3.0.0 |
+| --: | --: | --: |
+| 100 | 7.1 s | 0.21 s |
+| 1,000 | 61.3 s | 0.80 s |
+| 10,000 | not measured | 8.0 s |
+
+2.0.1 spent two `git show` spawns per staged file and read every blob just
+to learn its size; 3.0.0 sizes the whole index in one `git cat-file
+--batch-check` and streams contents in batched windows, so the spawn count
+stops tracking the file count. Process spawns are dearest on Windows, which
+is why the numbers above are the ones worth quoting - re-run the script on
+your own machine, the `--impl` flag points it at any older copy of
+`src/guard.mjs` for the comparison column.
 
 CI, with the policy delivered from a secret store rather than the repo:
 
@@ -104,14 +143,21 @@ you are about to `git add`), then the default tracked-files scan, then read
 
 ## The tests are the point
 
+Every behavioural claim above is mapped to the test that enforces it in
+[CLAIMS.md](CLAIMS.md). The load-bearing ones:
+
 | Test | Claim |
 | :-- | :-- |
 | policy inside a scanned root is refused, from the library | the list itself is the leak, and the guard is not just in the CLI |
 | --staged reads the index blob, not the worktree | staging a secret then cleaning the file cannot fool the hook |
-| --staged from a subdirectory scans the staged set | no silent zero-file pass |
+| --staged from a subdirectory scans the whole staged set | a monorepo hook cannot miss the sibling package |
 | an oversized file dirties the result, named | a file the scan could not examine is not clean |
+| a NUL-bearing `notes.txt` is skipped and named, a text `data.bin` is scanned | the sniff is content, not extension |
+| a UTF-16 file carrying a token is caught | the common skip class is scanned, not written off |
+| scanning zero files is not clean | the worst failure is a reassuring exit 0 over nothing |
+| an `allow:` with no value is an error | a one-character typo must not silently disable the scan |
+| a token in a path is a finding, and the report masks it | paths publish too, and the report is still safe to share |
 | two secrets on one line are two findings | under-reporting is the dangerous direction |
-| redacted report omits the token | the report is safe to share by default |
+| a malformed regex exits 2, not 1 | a policy typo is not a leak; the contract has to hold |
 | empty policy is an error | an empty policy proves nothing; silence is not cleanliness |
-| binaries skipped by content sniff, not extension | a renamed binary does not crash or lie |
 | allow rules skip known noise | false positives get an explicit, visible escape hatch |
