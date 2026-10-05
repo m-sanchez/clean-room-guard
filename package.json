@@ -24,15 +24,23 @@
     "type": "git",
     "url": "git+https://github.com/m-sanchez/clean-room-guard.git"
   },
+  "homepage": "https://github.com/m-sanchez/clean-room-guard#readme",
+  "bugs": {
+    "url": "https://github.com/m-sanchez/clean-room-guard/issues"
+  },
   "author": "Miguel Sanchez <contact@miguelsanchez.co.uk>",
   "license": "MIT",
   "keywords": [
     "security",
+    "leak-detection",
+    "denylist",
     "secrets",
     "pre-commit",
-    "publishing",
     "open-source",
-    "scanner"
+    "publishing",
+    "redaction",
+    "scanner",
+    "cli"
   ],
   "engines": {
     "node": ">=18"
